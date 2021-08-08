@@ -25,6 +25,7 @@ class Client():
         #STILL NEEDS TO MAKE SURE PARAMETERS ARE VALID
 
         self.socket = None
+        self.data = None
 
         input_string = sys.argv
         if len(input_string) != 4:
@@ -71,6 +72,46 @@ class Client():
         message_to_send = bytearray(magic_number+type_bytes+filename_len+filename_in_bytes)
         #time.sleep(2)
         self.socket.send(message_to_send)
+
+        self.data = self.socket.recv(4096)
+        print(f"{self.data}")
+        self.socket.close()
+
+    def process_response(self):
+        print(int.from_bytes(self.data[0:2], byteorder='big'))
+        print(int.from_bytes(self.data[2:3], byteorder='big'))
+        print(int.from_bytes(self.data[3:4], byteorder='big'))
+        #print(int.from_bytes(self.data[5:9], byteorder='big'))
+
+        if int.from_bytes(self.data[0:2], byteorder='big') != 0x497E:
+            print(int.from_bytes(self.data[0:2], byteorder='big'))
+            sys.exit("magic number didnt match")
+        elif int.from_bytes(self.data[2:3], byteorder='big') != 2:
+            sys.exit("wrong type")
+            
+        elif int.from_bytes(self.data[3:4], byteorder='big') not in [0, 1]:
+            sys.exit("Incorrect status code, File corrupted")
+
+        elif int.from_bytes(self.data[3:4], byteorder='big') == 0:
+            sys.exit("File does not exist")
+
+        else:
+            file_length = int.from_bytes(self.data[4:8], byteorder='big')
+            print(file_length)
+            print(len(self.data))
+            print(len(self.data[8:8+file_length]))
+            if len(self.data[8:8+file_length]) != file_length:
+                sys.exit("Data corrupted")
+            else:
+                file_data = self.data[8:8+file_length].decode('utf-8')
+                temp = open(self.file_name, 'w')
+                temp.write(file_data)
+                temp.close()
+                print("Written to file")
+
+
+
+        
         
 
 
@@ -82,6 +123,7 @@ def run_client():
     client = Client()
     client.create_socket()
     client.file_request()
+    client.process_response()
 
 if __name__ == "__main__":
     run_client()

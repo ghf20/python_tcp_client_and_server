@@ -36,6 +36,7 @@ class Server():
         self.connection_address = None
         self.data = None
         self.file_to_send = None
+        self.status_code = 1
         
     def create_bind(self):
 
@@ -69,26 +70,49 @@ class Server():
         elif int.from_bytes(self.data[2:3], byteorder='big') != 1:
             print(int.from_bytes(self.data[2:3], byteorder='big'))
             sys.exit("wrong type")
+            
         elif int.from_bytes(self.data[3:5], byteorder='big') not in range(1, 1025):
-            print(int.from_bytes(self.data[3:5], byteorder='big'))
             sys.exit("File not correct size")
+        size_of_message = int.from_bytes(self.data[3:5], byteorder='big')
         
-        file_to_send = self.data[5:].decode('utf-8')
-        print(file_to_send)
-        if os.path.isfile(file_to_send) and os.access(file_to_send, os.R_OK):
-            self.file_to_send = file_to_send
+        file_to_send = self.data[5:5+size_of_message].decode('utf-8')
+        
+        if not(os.path.isfile(file_to_send) and os.access(file_to_send, os.R_OK)) or len(self.data) != 5+size_of_message:
+            self.status_code = 0
         else:
-            sys.exit("Cannot locate file")
+            self.file_to_send = file_to_send
+        
 
     def send_respose(self):
-        pass
+        
+        magic_number = int.to_bytes(int(0x497E), 2, byteorder='big')
+        type_byte = int.to_bytes(2, 1, byteorder='big')
+        status_code = int.to_bytes(self.status_code, 1, byteorder='big')
+        if self.status_code != 0:
+            data_length = int.to_bytes(os.path.getsize(self.file_to_send), 4, byteorder='big')
+        else:
+            data_length = int.to_bytes(0, 4, byteorder='big')
+
+     
+        file_data = str.encode(open(self.file_to_send).read(), encoding='utf-8') if self.status_code != 0 else None
+        if file_data is not None:
+            print([magic_number, type_byte ,status_code, data_length, file_data])
+            response = magic_number + type_byte + status_code + data_length + file_data
+            print(response)
+        else:
+            response = magic_number + type_byte + status_code + data_length
+        
+        self.connection.sendall(response)
+        self.socket.close()
+        print("respose sent")
         
         
 
 def run_server():
     serv_ = Server()  # Start Server instance
     serv_.create_bind() #create socket, bind to port and accept connection
-    serv_.accept_connection() 
+    serv_.accept_connection()
+    serv_.send_respose() 
     
 
 
