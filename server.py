@@ -8,6 +8,8 @@ Author: George Fraser
 """
 import sys
 import socket
+import time
+import os
 
 
 
@@ -26,33 +28,68 @@ class Server():
 
         #Checks the necessary condition of being in the range 1024-64000 inclusive
         if self.port_number not in range(1024, 64001):
-            sys.exit("Port number must be in range 1024 - 64000 inclusive")
+            sys.exit("ERROR: Port number must be in range 1024 - 64000 inclusive")
 
         self.host = '127.0.0.1' #Local host
+        self.socket = None
+        self.connection = None
+        self.connection_address = None
+        self.data = None
+        self.file_to_send = None
         
+    def create_bind(self):
 
-    def create_bind_accept(self):
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-        current_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        current_socket.bind((self.host, self.port_number))
+        self.socket.bind((self.host, self.port_number))
 
         try:
             #WILL THIS EVER STOP?
-            current_socket.listen()
+            self.socket.listen()
         except socket.error:
-            current_socket.close()
+            self.socket.close()
             sys.exit("Failed to connect to Client")
         
-        #not accepting connection
-        connection, address = current_socket.accept()
-        print(f"SUCCESFULLY CONNECTED TO CLIENT ON {self.port_number}")
+    def accept_connection(self, timetimeout=1):
 
+        self.connection, self.connection_address = self.socket.accept()
+        self.connection.settimeout(1.0) #Started connection timeout at 1.0 seconds
+        temp_time = time.localtime()
+        current_time = time.strftime("%a, %d %b %Y %H:%M:%S", temp_time)
+        print(f"Connected to client at IP: {self.connection_address[0]} on Port: {self.port_number} at {current_time}")
+        
+        self.data = self.connection.recv(1029)
+        self.connection.settimeout(None)
+        
+
+        #check data is valid
+        if int.from_bytes(self.data[0:2], byteorder='big') != 0x497E:
+            print(int.from_bytes(self.data[0:2], byteorder='big'))
+            sys.exit("magic number didnt match")
+        elif int.from_bytes(self.data[2:3], byteorder='big') != 1:
+            print(int.from_bytes(self.data[2:3], byteorder='big'))
+            sys.exit("wrong type")
+        elif int.from_bytes(self.data[3:5], byteorder='big') not in range(1, 1025):
+            print(int.from_bytes(self.data[3:5], byteorder='big'))
+            sys.exit("File not correct size")
+        
+        file_to_send = self.data[5:].decode('utf-8')
+        print(file_to_send)
+        if os.path.isfile(file_to_send) and os.access(file_to_send, os.R_OK):
+            self.file_to_send = file_to_send
+        else:
+            sys.exit("Cannot locate file")
+
+    def send_respose(self):
+        pass
+        
+        
 
 def run_server():
     serv_ = Server()  # Start Server instance
-
-    serv_.create_bind_accept() #create socket, bind to port and accept connection
+    serv_.create_bind() #create socket, bind to port and accept connection
+    serv_.accept_connection() 
+    
 
 
 if __name__ == "__main__":

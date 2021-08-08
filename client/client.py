@@ -17,21 +17,23 @@ import socket
 import sys
 import os
 
+
 class Client():
 
     def __init__(self):
 
         #STILL NEEDS TO MAKE SURE PARAMETERS ARE VALID
 
+        self.socket = None
+
         input_string = sys.argv
         if len(input_string) != 4:
             sys.exit("Incorrect amount of arguments")
 
-        
         try:
             
             self.IP = input_string[1]
-            socket.getaddrinfo(self.IP, None)   
+            socket.gethostbyname(self.IP)   
         except:
             sys.exit("ERROR: Invaild IP address")
 
@@ -50,14 +52,28 @@ class Client():
 
     def create_socket(self):
         
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         try:
-            client_socket.connect((self.IP, self.port_number))
+            self.socket.connect((self.IP, self.port_number))
             print(f"CONNECTED TO SERVER ON PORT {self.port_number}")
         except:
-            client_socket.close()
+            self.socket.close()
             sys.exit(f"ERROR: Could not connect to server on Port {self.port_number}, at {self.IP}")
+
+        
+    def file_request(self):
+        """send request to server in byte form"""
+        filename_in_bytes = bytes(self.file_name, 'utf-8')
+        filename_len = int.to_bytes(len(filename_in_bytes), 2, byteorder='big')
+        magic_number = int.to_bytes(int(0x497E), 2, byteorder='big')
+        type_bytes = int.to_bytes(1, 1, byteorder='big')
+        message_to_send = bytearray(magic_number+type_bytes+filename_len+filename_in_bytes)
+        #time.sleep(2)
+        self.socket.send(message_to_send)
+        
+
+
 
 
 
@@ -65,7 +81,7 @@ def run_client():
 
     client = Client()
     client.create_socket()
-
+    client.file_request()
 
 if __name__ == "__main__":
     run_client()
