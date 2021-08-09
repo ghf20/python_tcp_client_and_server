@@ -32,10 +32,9 @@ class Client():
             sys.exit("Incorrect amount of arguments")
 
         try:
-            
             self.IP = input_string[1]
-            socket.gethostbyname(self.IP)   
-        except:
+            socket.gethostbyname(self.IP) #for IPV4 addresses  
+        except socket.error:
             sys.exit("ERROR: Invaild IP address")
 
         try:
@@ -49,16 +48,16 @@ class Client():
 
         self.file_name = input_string[3]
         if os.path.isfile(self.file_name) and os.access(self.file_name, os.R_OK):
-            sys.exit("ERROR: File already exists locally")
+            sys.exit("ERROR: File already exists is current local directory")
 
     def create_socket(self):
         
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
+        
         try:
             self.socket.connect((self.IP, self.port_number))
             print(f"CONNECTED TO SERVER ON PORT {self.port_number}")
-        except:
+        except socket.error:
             self.socket.close()
             sys.exit(f"ERROR: Could not connect to server on Port {self.port_number}, at {self.IP}")
 
@@ -67,21 +66,17 @@ class Client():
         """send request to server in byte form"""
         filename_in_bytes = bytes(self.file_name, 'utf-8')
         filename_len = int.to_bytes(len(filename_in_bytes), 2, byteorder='big')
-        magic_number = int.to_bytes(int(0x497E), 2, byteorder='big')
+        magic_number = int.to_bytes(int(0x497E), 2, byteorder='big') #changed E to Fm for testing
         type_bytes = int.to_bytes(1, 1, byteorder='big')
         message_to_send = bytearray(magic_number+type_bytes+filename_len+filename_in_bytes)
         #time.sleep(2)
         self.socket.send(message_to_send)
 
         self.data = self.socket.recv(4096)
-        print(f"{self.data}")
+        #print(f"{self.data}")
         self.socket.close()
 
     def process_response(self):
-        print(int.from_bytes(self.data[0:2], byteorder='big'))
-        print(int.from_bytes(self.data[2:3], byteorder='big'))
-        print(int.from_bytes(self.data[3:4], byteorder='big'))
-        #print(int.from_bytes(self.data[5:9], byteorder='big'))
 
         if int.from_bytes(self.data[0:2], byteorder='big') != 0x497E:
             print(int.from_bytes(self.data[0:2], byteorder='big'))
@@ -97,23 +92,14 @@ class Client():
 
         else:
             file_length = int.from_bytes(self.data[4:8], byteorder='big')
-            print(file_length)
-            print(len(self.data))
-            print(len(self.data[8:8+file_length]))
             if len(self.data[8:8+file_length]) != file_length:
                 sys.exit("Data corrupted")
             else:
                 file_data = self.data[8:8+file_length].decode('utf-8')
-                temp = open(self.file_name, 'w')
+                """ temp = open(self.file_name, 'w')
                 temp.write(file_data)
-                temp.close()
+                temp.close() """
                 print("Written to file")
-
-
-
-        
-        
-
 
 
 
