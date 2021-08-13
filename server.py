@@ -19,7 +19,7 @@ class Server():
         """Gets the Port Number from stdin. if it doesnt meet the parameters set out then it throws an error and terminates"""
         input_port_number = sys.argv
         if len(input_port_number) != 2:
-            sys.exit("ERROR: Incorrect number of arguments. A port number between 1024 and 64000 must be entered")        
+            sys.exit("ERROR: Incorrect number of arguments. Enter port number between 1024 and 64000 must be entered")        
 
         try:
             self.port_number = int(input_port_number[1])
@@ -105,10 +105,10 @@ class Server():
         else:
             data_length = int.to_bytes(0, 4, byteorder='big')
 
-        with open(self.file_to_send) as file:
-            file_data = str.encode(file.read(), encoding='utf-8') if self.status_code != 0 else None
+        with open(self.file_to_send, 'rb') as file:
+            file_data = file.read() if self.status_code != 0 else None
             if file_data is not None:
-                #print([magic_number, type_byte ,status_code, data_length, file_data])
+                
                 response = magic_number + type_byte + status_code + data_length + file_data
                 
             else:

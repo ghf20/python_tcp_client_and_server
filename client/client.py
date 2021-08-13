@@ -25,7 +25,7 @@ class Client():
         #STILL NEEDS TO MAKE SURE PARAMETERS ARE VALID
 
         self.socket = None
-        self.data = None
+        self.data = bytearray()
 
         input_string = sys.argv
         if len(input_string) != 4:
@@ -66,40 +66,53 @@ class Client():
         """send request to server in byte form"""
         filename_in_bytes = bytes(self.file_name, 'utf-8')
         filename_len = int.to_bytes(len(filename_in_bytes), 2, byteorder='big')
-        magic_number = int.to_bytes(int(0x497E), 2, byteorder='big') #changed E to Fm for testing
+        magic_number = int.to_bytes(int(0x497E), 2, byteorder='big') 
         type_bytes = int.to_bytes(1, 1, byteorder='big')
         message_to_send = bytearray(magic_number+type_bytes+filename_len+filename_in_bytes)
         #time.sleep(2)
         self.socket.send(message_to_send)
+        try:
+            self.socket.settimeout(1)
+            while True:
+                data = self.socket.recv(4096)
+                if data:
+                    self.data += data
+                else:
+                    break
 
-        self.data = self.socket.recv(4096)
-        #print(f"{self.data}")
-        self.socket.close()
+            self.socket.settimeout(None)
+            self.socket.close()
+
+        except socket.timeout:
+            self.socket.close()
+            sys.exit("ERROR: Connection timed out")
+        
+
 
     def process_response(self):
 
         if int.from_bytes(self.data[0:2], byteorder='big') != 0x497E:
             print(int.from_bytes(self.data[0:2], byteorder='big'))
-            sys.exit("magic number didnt match")
+            sys.exit("ERROR: magic number didnt match 0x497E")
         elif int.from_bytes(self.data[2:3], byteorder='big') != 2:
-            sys.exit("wrong type")
+            sys.exit("ERROR: Wrong type in file response. Needs to equal 1")
             
         elif int.from_bytes(self.data[3:4], byteorder='big') not in [0, 1]:
-            sys.exit("Incorrect status code, File corrupted")
+            sys.exit("ERROR: Incorrect status code, File corrupted")
 
         elif int.from_bytes(self.data[3:4], byteorder='big') == 0:
-            sys.exit("File does not exist")
+            sys.exit("ERROR: File does not exist on server")
 
         else:
             file_length = int.from_bytes(self.data[4:8], byteorder='big')
             if len(self.data[8:8+file_length]) != file_length:
-                sys.exit("Data corrupted")
+                sys.exit("ERROR: File is incorrect lenth, data corrupted")
             else:
-                file_data = self.data[8:8+file_length].decode('utf-8')
-                """ temp = open(self.file_name, 'w')
+                file_data = self.data[8:8+file_length]#.decode('utf-8')
+                temp = open(self.file_name, 'wb')
                 temp.write(file_data)
-                temp.close() """
-                print("Written to file")
+                temp.close()
+                print(f"{len(self.data)} bytes recieved and written to file '{self.file_name}'")
 
 
 
