@@ -11,23 +11,23 @@ import socket
 import time
 import os
 
-
+#PRINTS WRONG ERROR WHEN FILE DOESNT EXIST ON SERVER
 
 class Server():
 
     def __init__(self):
-        """Gets the Port Number from stdin. if it doesnt meet the parameters set out then it throws an error and terminates"""
+        
         input_port_number = sys.argv
         if len(input_port_number) != 2:
             sys.exit("ERROR: Incorrect number of arguments. Enter port number between 1024 and 64000 must be entered")        
 
         try:
             self.port_number = int(input_port_number[1])
-        except ValueError:
+        except ValueError: #CATCHES INSTANCE WHERE PORT NUMBER IS NOT AN INTEGER
             sys.exit("ERROR: Port number must be an integer")
 
-        #Checks the necessary condition of being in the range 1024-64000 inclusive
-        if self.port_number not in range(1024, 64001):
+       
+        if self.port_number not in range(1024, 64001):  #Checks the necessary condition of being in the range 1024-64000 inclusive
             sys.exit("ERROR: Port number must be in range 1024 - 64000 inclusive")
 
         self.host = '127.0.0.1' #Local host
@@ -41,56 +41,68 @@ class Server():
     def create_bind(self):
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #Allows socket to be reuse port if an error occurs and doesnt close correctly
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #Allows socket to be reuse port if an exception occurs
 
         try:
             self.socket.bind((self.host, self.port_number))
-        except socket.error as error_message:
+        except socket.error:
             self.socket.close()
-            sys.exit(f"ERROR: Failed to connect to Client, Error code: {error_message[0]}, Message: {error_message[1]}")
+            sys.exit(f"ERROR: Failed to connect to Client")
         
-        self.socket.listen()
+        self.socket.listen() 
 
-    def accept_connection(self, timetimeout=1):
+    def accept_connection(self):
         
         print(f"Listenting for connection on {self.port_number}")
         self.connection, self.connection_address = self.socket.accept()
-        self.connection.settimeout(1.0) #Started connection timeout at 1.0 seconds
-        temp_time = time.localtime()
-        current_time = time.strftime("%a, %d %b %Y %H:%M:%S", temp_time)
-        print(f"Connected to client at IP: {self.connection_address[0]} on Port: {self.port_number} at {current_time}")
+        try:
+            self.connection.settimeout(1.0) #Started connection timeout at 1.0 seconds
+            temp_time = time.localtime()
+            current_time = time.strftime("%a, %d %b %Y %H:%M:%S", temp_time)
+            print(f"Connected to client at IP: {self.connection_address[0]} on Port: {self.port_number} at {current_time}")
+            self.data = self.connection.recv(1024)#1029
+            self.connection.settimeout(None)
+            
+        except socket.timeout:
+            self.connection.close()
+            print("ERROR: Connection timed out")
+            
         
-        self.data = self.connection.recv(1029)
-        self.connection.settimeout(None)
-        
-
-        #check data is valid
+    def process_request(self):
+        #CHECK FILE REQUEST HEADER IS VALID
         if int.from_bytes(self.data[0:2], byteorder='big') != 0x497E:
             print("ERROR: Magic number didnt match CONNECTION CLOSED")
             self.connection.close()
             return 0
 
-        elif int.from_bytes(self.data[2:3], byteorder='big') != 1:
-            print("wrong type")
+        if int.from_bytes(self.data[2:3], byteorder='big') != 1:
+            print("ERROR: WRONG TYPE, CONNECTION CLOSED")
             self.connection.close()
             return 0
             
-        elif int.from_bytes(self.data[3:5], byteorder='big') not in range(1, 1025):
-            print("File not correct size")
+        if int.from_bytes(self.data[3:5], byteorder='big') not in range(1, 1025):
+            print("ERROR: File not correct size")
             self.connection.close()
             return 0
         
         size_of_message = int.from_bytes(self.data[3:5], byteorder='big')
-        file_to_send = self.data[5:5+size_of_message].decode('utf-8')
-
-        if not(os.path.isfile(file_to_send) and os.access(file_to_send, os.R_OK)):
+        file_to_send = self.data[5:5+size_of_message].decode('utf-8') #DECODE THE FILENAME FROM THE FILE REQUEST
+        
+        #EDITS START NOW
+        if not(os.path.isfile(file_to_send) and os.access(file_to_send, os.R_OK)): #CHECKING IF FILE EXISTS LOCALLY, IF NOT SEND REPLY TO SERVER 
+            magic_number = int.to_bytes(int(0x497E), 2, byteorder='big')
+            type_byte = int.to_bytes(2, 1, byteorder='big')
+            status_code = int.to_bytes(0, 1, byteorder='big') #SET TO ZERO AS FILE DOESNT EXIST LOCALLY
+            data_length = int.to_bytes(0, 4, byteorder='big') #BECAUSE THERE IS NO FILE LOCALLY THE FILE LENGTH IS ZERO
+            self.connection.sendall(magic_number + type_byte + status_code + data_length)
             print(f"{file_to_send} does not exist CONNECTION CLOSED")
             self.connection.close()
-            return 0
+            return 0 #CONTINUE LISTENING ON DESIGNATED PORT NUMBER
         
-        elif len(self.data) != 5+size_of_message:
+        elif len(self.data) != 5+size_of_message: #CHECKING FOR FILENAME CORRUPTION
             self.status_code = 0
-        else:
+        
+        else: #DATA IS VALID SO CONTINUE TO SENDING DATA TO CLIENT
             self.file_to_send = file_to_send
         return 1
         
@@ -100,6 +112,7 @@ class Server():
         magic_number = int.to_bytes(int(0x497E), 2, byteorder='big')
         type_byte = int.to_bytes(2, 1, byteorder='big')
         status_code = int.to_bytes(self.status_code, 1, byteorder='big')
+        
         if self.status_code != 0:
             data_length = int.to_bytes(os.path.getsize(self.file_to_send), 4, byteorder='big')
         else:
@@ -108,12 +121,10 @@ class Server():
         with open(self.file_to_send, 'rb') as file:
             file_data = file.read() if self.status_code != 0 else None
             if file_data is not None:
-                
-                response = magic_number + type_byte + status_code + data_length + file_data
-                
+                response = magic_number + type_byte + status_code + data_length + file_data 
             else:
                 response = magic_number + type_byte + status_code + data_length
-            file.close()
+            
         
         self.connection.sendall(response)
         print(f"{len(response)} bytes transfered to {self.connection_address[0]}")
@@ -127,12 +138,16 @@ def run_server():
         serv_ = Server()  # Start Server instance
         serv_.create_bind() #create socket, bind to port and accept connection
         
-        while True:
-            processing_code = serv_.accept_connection()
-            while processing_code == 0:
-                processing_code = serv_.accept_connection()
+        while True: #CREATES INFINITE LOOP LISTENING ON ENTERED PORT NUMBER
+            serv_.accept_connection()
+            processing_code = serv_.process_request()
+
+            while processing_code == 0: #LOOPS UNTIL A VALID, UNCORRUPTED FILE REQUEST IS MADE BY THE CLIENT
+                serv_.accept_connection()
+                processing_code = serv_.process_request()
             
-            serv_.send_respose()
+            serv_.send_respose() #SEND FILERESPONSE INCLUDING FILE DATA TO CLIENT AND CLOSE CONNECTION
+    
     except KeyboardInterrupt:
         serv_.socket.close()
         sys.exit("\nERROR: Keyboard interupt, CONNECTION CLOSED")

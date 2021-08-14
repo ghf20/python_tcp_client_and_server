@@ -92,7 +92,6 @@ class Client():
     def process_response(self):
 
         if int.from_bytes(self.data[0:2], byteorder='big') != 0x497E:
-            print(int.from_bytes(self.data[0:2], byteorder='big'))
             sys.exit("ERROR: magic number didnt match 0x497E")
         elif int.from_bytes(self.data[2:3], byteorder='big') != 2:
             sys.exit("ERROR: Wrong type in file response. Needs to equal 1")
