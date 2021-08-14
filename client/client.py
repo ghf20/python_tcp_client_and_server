@@ -1,16 +1,30 @@
-"""Client-side commandline application to communicate and exchange data with a server via TCP sockets
+"""Client-side commandline application to communicate and exchange 
+    data with a server via TCP sockets
 
 Author: George Fraser
 
 -Parameters:
     IP ADDRESS:
-        Accepts via stdin a valid Ipv4 IP address or host name
+        Accepts via stdin a valid Ipv4 IP address or hostname i.e localhost
     Port Number:
         Accepts via stdin a port number (integer) between 1024 and 64000 inclusive
-        If the port number doesnt conform to these conditions the server will print an error message and terminate
+
+        If the port number doesnt conform to these conditions 
+            the server will print an error message and terminate
     File to transfer
-        Accepts via stdin a filename that you wish to transfer from the server as long as there isnt a matching
-        file in the current working directory (Perhaps add ability to pipe to another directory)
+        Accepts via stdin a filename that you wish to transfer 
+            from the server
+
+Example command to start client.py is: 
+    python3 client.py 127.0.0.1 <port_number> <filename>
+
+Things to note:
+    - server.py must be running first before client.py in order to transfer files
+    - Only configured to run on localhost 127.0.0.1
+    - Will only transfer file if file does not exist in the directory containing client.py
+    - Port number must match port listening on server.py
+    - filename must not exceed 1024 bytes
+    - can only transfer one file at a time
 """
 
 import socket
@@ -22,8 +36,6 @@ class Client():
 
     def __init__(self):
 
-        #STILL NEEDS TO MAKE SURE PARAMETERS ARE VALID
-
         self.socket = None
         self.data = bytearray()
 
@@ -32,10 +44,9 @@ class Client():
             sys.exit("Incorrect amount of arguments")
 
         try:
-            self.IP = input_string[1]
-            socket.gethostbyname(self.IP) #for IPV4 addresses  
+            self.IP = socket.gethostbyname(input_string[1]) #for IPV4 addresses  
         except socket.error:
-            sys.exit("ERROR: Invaild IP address")
+            sys.exit("ERROR: Invaild IP address, must be IPv4 Address")
 
         try:
             self.port_number = int(input_string[2])
@@ -47,33 +58,40 @@ class Client():
             sys.exit("ERROR: Port number must be in range 1024 - 64000 inclusive")
 
         self.file_name = input_string[3]
-        if os.path.isfile(self.file_name) and os.access(self.file_name, os.R_OK):
+        if os.access(self.file_name, os.R_OK):
             sys.exit("ERROR: File already exists is current local directory")
 
     def create_socket(self):
-        
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        except socket.error:
+            sys.exit("ERROR: Could not create socket")
+
+        self.socket.settimeout(1) #SOCKET WILL TIMEOUT IF FAILS TO CONNECT
         
         try:
             self.socket.connect((self.IP, self.port_number))
             print(f"CONNECTED TO SERVER ON PORT {self.port_number}")
-        except socket.error:
-            self.socket.close()
-            sys.exit(f"ERROR: Could not connect to server on Port {self.port_number}, at {self.IP}")
 
+        except (socket.error, socket.timeout):
+            self.socket.close()
+            sys.exit(f"ERROR: Could not connect to server on {self.IP}:{self.port_number}")
+        self.socket.settimeout(None)
         
     def file_request(self):
         """send request to server in byte form"""
-        filename_in_bytes = bytes(self.file_name, 'utf-8')
-        filename_len = int.to_bytes(len(filename_in_bytes), 2, byteorder='big')
         magic_number = int.to_bytes(int(0x497E), 2, byteorder='big') 
         type_bytes = int.to_bytes(1, 1, byteorder='big')
+        filename_in_bytes = bytes(self.file_name, 'utf-8') #ENCODE FILENAME IN BYTES
+        filename_len = int.to_bytes(len(filename_in_bytes), 2, byteorder='big') 
+       
         message_to_send = bytearray(magic_number+type_bytes+filename_len+filename_in_bytes)
-        #time.sleep(2)
         self.socket.send(message_to_send)
+        
+        #WAIT FOR FILE RESPONSE FROM SERVER
         try:
             self.socket.settimeout(1)
-            while True:
+            while True: #CREATE INFINITE LOOP TO RECIEVE DATA IN CHUNKS <= 4096 BYTES
                 data = self.socket.recv(4096)
                 if data:
                     self.data += data
@@ -104,14 +122,16 @@ class Client():
 
         else:
             file_length = int.from_bytes(self.data[4:8], byteorder='big')
+
+            #CHECKING THE FILE IS EXACTLY AS BIG AS IT IS SUPPOSED TO BE
             if len(self.data[8:8+file_length]) != file_length:
-                sys.exit("ERROR: File is incorrect lenth, data corrupted")
+                sys.exit("ERROR: File is incorrect lenth, data corrupted") 
             else:
-                file_data = self.data[8:8+file_length]#.decode('utf-8')
+                file_data = self.data[8:8+file_length]
                 temp = open(self.file_name, 'wb')
                 temp.write(file_data)
                 temp.close()
-                print(f"{len(self.data)} bytes recieved and written to file '{self.file_name}'")
+                print(f"{len(self.data)} bytes recieved. Written to file '{self.file_name}'")
 
 
 
