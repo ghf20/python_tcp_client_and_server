@@ -64,6 +64,7 @@ class Client():
     def create_socket(self):
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            #self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVTIMEO, 1)
         except socket.error:
             sys.exit("ERROR: Could not create socket")
 
@@ -83,7 +84,11 @@ class Client():
         magic_number = int.to_bytes(int(0x497E), 2, byteorder='big') 
         type_bytes = int.to_bytes(1, 1, byteorder='big')
         filename_in_bytes = bytes(self.file_name, 'utf-8') #ENCODE FILENAME IN BYTES
-        filename_len = int.to_bytes(len(filename_in_bytes), 2, byteorder='big') 
+        try:
+            filename_len = int.to_bytes(len(filename_in_bytes), 2, byteorder='big')
+        except OverflowError:
+            self.socket.close()
+            sys.exit("ERROR: Filename is too long, Stack Overflow") 
        
         message_to_send = bytearray(magic_number+type_bytes+filename_len+filename_in_bytes)
         self.socket.send(message_to_send)

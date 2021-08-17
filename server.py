@@ -123,13 +123,21 @@ class Server():
         magic_number = int.to_bytes(int(0x497E), 2, byteorder='big')
         type_byte = int.to_bytes(2, 1, byteorder='big')
         status_code = int.to_bytes(self.status_code, 1, byteorder='big')
-        
-        if self.status_code != 0: 
-            data_length = int.to_bytes(os.path.getsize(self.file_to_send), 4, byteorder='big')
-
-            with open(self.file_to_send, 'rb') as file: #OPEN AS BINARY FILE
-                file_data = file.read()
-                response = magic_number + type_byte + status_code + data_length + file_data 
+        file_data = None
+        if self.status_code != 0:
+            try: 
+                data_length = int.to_bytes(os.path.getsize(self.file_to_send), 4, byteorder='big')
+                file = open(self.file_to_send, 'rb')
+                file_data = file
+                response = magic_number + type_byte + status_code + data_length# + file_data
+                """ with open(self.file_to_send, 'rb') as file: #OPEN AS BINARY FILE
+                    file_data = file.read()
+                    response = magic_number + type_byte + status_code + data_length + file_data """
+            except OverflowError:
+                print("ERROR: Filesize must be <= 4GB")
+                data_length = int.to_bytes(1, 4, byteorder='big') #set to 1 to show transfer is corrupted
+                response = magic_number + type_byte + status_code + data_length 
+                file_data = None
         
         else: #WILL ONLY HAPPEN IF FILE DOES NOT EXIST OR FILENAME WAS CORRUPTED
             data_length = int.to_bytes(0, 4, byteorder='big')
@@ -137,7 +145,11 @@ class Server():
         
 
         self.connection.sendall(response)
-        print(f"{len(response)} bytes sent to {self.connection_address[0]}")
+        if file_data is not None:
+            self.connection.sendfile(file_data)
+            print(f"{len(response)+os.path.getsize(self.file_to_send)} bytes sent to {self.connection_address[0]}")
+        else:
+            print(f"{len(response)} bytes sent to {self.connection_address[0]}")
         self.connection.close()
         
         
@@ -154,8 +166,10 @@ def run_server():
             while processing_code == 0: 
                 serv_.accept_connection()
                 processing_code = serv_.process_request()
-            
-            serv_.send_respose() #SEND FILERESPONSE INCLUDING FILE DATA TO CLIENT
+            try:
+                serv_.send_respose() #SEND FILERESPONSE INCLUDING FILE DATA TO CLIENT
+            except BrokenPipeError:
+                print("ERROR: Client timed out, Transfer aborted")
     
     except KeyboardInterrupt:
         serv_.socket.close()
