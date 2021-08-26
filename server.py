@@ -27,53 +27,56 @@ class Server():
             sys.exit("ERROR: Incorrect number of arguments")        
 
         try:
-            self.port_number = int(input_port_number[1])
+            self.port = int(input_port_number[1])
         except ValueError: #CATCHES INSTANCE WHERE PORT NUMBER IS NOT AN INTEGER
             sys.exit("ERROR: Port number must be an integer")
 
-        if self.port_number not in range(1024, 64001):  #Checks port inrange 1024-64000 inclusive
+        #Checks port inrange 1024-64000 inclusive
+        if self.port not in range(1024, 64001):  
             sys.exit("ERROR: Port number must be in range 1024-64000 inclusive")
 
         self.host = '127.0.0.1' #Local host
         self.socket = None
-        self.connection = None #socket connection
-        self.connection_address = None  #address of connected client
+        self.conn = None #socket connection
+        self.con_add = None  #address of connected client
         self.data = None #file data to transfer
         self.file_to_send = None #filename for file transfer
         self.status_code = 1
         
     def create_bind(self):
 
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #CREATE SOCKET WITH IPV4 AND TCP PROTOCOLS
-        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #Allows user to connect to same port after connection is closed
+        #CREATE SOCKET WITH IPV4 AND TCP PROTOCOLS
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #Allows user to connect to same port after connection is closed 
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) 
 
         try:
-            self.socket.bind((self.host, self.port_number))
+            self.socket.bind((self.host, self.port))
         except socket.error:
             self.socket.close()
-            sys.exit(f"ERROR: Failed to bind to Client on {self.host}:{self.port_number}")
+            sys.exit(f"ERROR: Failed to bind to Client on {self.host}:{self.port}")
         
         try:
             self.socket.listen()
         except socket.error:
             self.socket.close()
-            sys.exit(f"ERROR: Failed to listen for connection on {self.host}:{self.port_number}") 
+            sys.exit(f"ERROR: Failed to connect on {self.host}:{self.port}") 
 
     def accept_connection(self):
         
         #ACCEPTS INCOMING CONNECTION ON SPECIFIED IP AND PORT
-        self.connection, self.connection_address = self.socket.accept() 
+        self.conn, self.con_add = self.socket.accept() 
 
         try:
-            self.connection.settimeout(1.0) #Started connection timeout at 1.0 seconds
+            self.conn.settimeout(1.0) #Started connection timeout at 1.0 seconds
             temp_time = time.localtime() #EXTRACT LOCAL TIME FROM SERVER
             current_time = time.strftime("%a, %d %b %Y %H:%M:%S", temp_time)
-            print(f"Connected to client at {self.connection_address[0]}:{self.port_number} at {current_time}")
-            self.data = self.connection.recv(1029) #RECIEVE FILE REQUEST FROM CLIENT
-            self.connection.settimeout(None)
+            print(f"Connected to client at {self.con_add[0]}:{self.port} at {current_time}")
+            self.data = self.conn.recv(1029) #RECIEVE FILE REQUEST FROM CLIENT
+            self.conn.settimeout(None)
             
         except socket.timeout: #IF FILE REQUEST FAILS, SOCKET CLOSES AND LISTENS AGAIN
-            self.connection.close()
+            self.conn.close()
             print("ERROR: Connection timed out")
             
         
@@ -86,19 +89,19 @@ class Server():
         #ENSURE FILE REQUEST HEADER MATCHES MAGIC NUMBER (0x487E)
         if int.from_bytes(self.data[0:2], byteorder='big') != 0x497E: 
             print("ERROR: Magic number didnt match CONNECTION CLOSED")
-            self.connection.close()
+            self.conn.close()
             return 0 
 
         #ENSURE TYPE FIELD IS EQUAL TO 1
         if int.from_bytes(self.data[2:3], byteorder='big') != 1: 
             print("ERROR: WRONG TYPE, CONNECTION CLOSED")
-            self.connection.close()
+            self.conn.close()
             return 0
 
         #ENSURE THAT 1 <= FILENAME LEN<= 1024 BYTES    
         if int.from_bytes(self.data[3:5], byteorder='big') not in range(1, 1025): 
             print("ERROR: File not correct size")
-            self.connection.close()
+            self.conn.close()
             return 0
         
         size_of_message = int.from_bytes(self.data[3:5], byteorder='big') #FILENAME LEN
@@ -124,33 +127,32 @@ class Server():
         type_byte = int.to_bytes(2, 1, byteorder='big')
         status_code = int.to_bytes(self.status_code, 1, byteorder='big')
         file_data = None
+
         if self.status_code != 0:
             try: 
-                data_length = int.to_bytes(os.path.getsize(self.file_to_send), 4, byteorder='big')
+                data_len = int.to_bytes(os.path.getsize(self.file_to_send), 4, byteorder='big')
                 file = open(self.file_to_send, 'rb')
                 file_data = file
-                response = magic_number + type_byte + status_code + data_length# + file_data
-                """ with open(self.file_to_send, 'rb') as file: #OPEN AS BINARY FILE
-                    file_data = file.read()
-                    response = magic_number + type_byte + status_code + data_length + file_data """
-            except OverflowError:
-                print("ERROR: Filesize must be <= 4GB")
-                data_length = int.to_bytes(1, 4, byteorder='big') #set to 1 to show transfer is corrupted
-                response = magic_number + type_byte + status_code + data_length 
+                response = magic_number + type_byte + status_code + data_len
+                
+            except OverflowError: #datalength field overflow
+                print("ERROR: Filesize must be <= 4GB, file not transfered")
+                data_len = int.to_bytes(1, 4, byteorder='big') #show transfer is corrupted
+                response = magic_number + type_byte + status_code + data_len 
                 file_data = None
         
         else: #WILL ONLY HAPPEN IF FILE DOES NOT EXIST OR FILENAME WAS CORRUPTED
-            data_length = int.to_bytes(0, 4, byteorder='big')
-            response = magic_number + type_byte + status_code + data_length
+            data_len = int.to_bytes(0, 4, byteorder='big')
+            response = magic_number + type_byte + status_code + data_len
         
 
-        self.connection.sendall(response)
+        self.conn.sendall(response)
         if file_data is not None:
-            self.connection.sendfile(file_data)
-            print(f"{len(response)+os.path.getsize(self.file_to_send)} bytes sent to {self.connection_address[0]}")
+            self.conn.sendfile(file_data)
+            print(f"{len(response)+os.path.getsize(self.file_to_send)} bytes sent to {self.con_add[0]}")
         else:
-            print(f"{len(response)} bytes sent to {self.connection_address[0]}")
-        self.connection.close()
+            print(f"{len(response)} bytes sent to {self.con_add[0]}")
+        self.conn.close()
         
         
 def run_server():
@@ -178,5 +180,4 @@ def run_server():
 
 if __name__ == "__main__":
     run_server()
-
 

@@ -49,12 +49,12 @@ class Client():
             sys.exit("ERROR: Invaild IP address, must be IPv4 Address")
 
         try:
-            self.port_number = int(input_string[2])
+            self.port = int(input_string[2])
         except ValueError:
             sys.exit("ERROR: Value must be an integer")
 
         
-        if self.port_number not in range(1024, 64001):
+        if self.port not in range(1024, 64001):
             sys.exit("ERROR: Port number must be in range 1024 - 64000 inclusive")
 
         self.file_name = input_string[3]
@@ -64,19 +64,18 @@ class Client():
     def create_socket(self):
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            #self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVTIMEO, 1)
         except socket.error:
             sys.exit("ERROR: Could not create socket")
 
         self.socket.settimeout(1) #SOCKET WILL TIMEOUT IF FAILS TO CONNECT
         
         try:
-            self.socket.connect((self.IP, self.port_number))
-            print(f"CONNECTED TO SERVER ON PORT {self.port_number}")
+            self.socket.connect((self.IP, self.port))
+            print(f"CONNECTED TO SERVER ON PORT {self.port}")
 
         except (socket.error, socket.timeout):
             self.socket.close()
-            sys.exit(f"ERROR: Could not connect to server on {self.IP}:{self.port_number}")
+            sys.exit(f"ERROR: Could not connect to server on {self.IP}:{self.port}")
         self.socket.settimeout(None)
         
     def file_request(self):
@@ -96,7 +95,7 @@ class Client():
         #WAIT FOR FILE RESPONSE FROM SERVER
         try:
             self.socket.settimeout(1)
-            while True: #CREATE INFINITE LOOP TO RECIEVE DATA IN CHUNKS <= 4096 BYTES
+            while True: #LOOP TO RECIEVE DATA IN CHUNKS <= 4096 BYTES
                 data = self.socket.recv(4096)
                 if data:
                     self.data += data
