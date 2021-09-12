@@ -16,4 +16,6 @@
          Port number must match open port on server
          file must not exist in local directory
          
+Edits will need to be made to use the client and server on separate instances although it possible with a few tweaks.
 
+Built for a specific set of parameters with corresponding error messages for university assignment
